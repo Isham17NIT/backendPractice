@@ -14,5 +14,8 @@
   "description": "",
   "dependencies": {
     "nodemon": "^3.1.11"
+  },
+  "devDependencies": {
+    "prettier": "^3.7.4"
   }
 }
