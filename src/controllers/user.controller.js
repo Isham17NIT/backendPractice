@@ -4,8 +4,8 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import validator from "validator" 
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
-import { response } from "express";
 import jwt from "jsonwebtoken"
+import { deleteFromCloudinaryByUrl } from "../utils/deleteFromCloudinary.js";
 
 const generateAccessAndRefreshTokens = async(userId)=>{
     try{
@@ -243,7 +243,7 @@ const changeCurrentPassword = asyncHandler(async(req, res)=>{
 })
 
 const getCurrentUser = asyncHandler(async(req, res)=>{
-    return res.status(200),json(
+    return res.status(200).json(
         new ApiResponse(200, req.user, "Current user fetched successfully")
     )
 })
@@ -273,8 +273,15 @@ const updateUserAvatar = asyncHandler(async(req, res)=>{
     if(!avatarLocalPath)
         throw new ApiError(400, "Avatar file is missing")
 
+    const existingUser = await User.findById(req.user?._id).select("avatar");
+
+    if (!existingUser) 
+        throw new ApiError(404, "User not found");
+
+    const oldAvatarUrl = existingUser.avatar;
+
     const avatar = await uploadOnCloudinary(avatarLocalPath)
-    if(!avatar.url)
+    if(!avatar?.url)
         throw new ApiError(400, "Error while uploading avatar")
 
     const user = await User.findByIdAndUpdate(req.user?._id,
@@ -287,6 +294,15 @@ const updateUserAvatar = asyncHandler(async(req, res)=>{
             new: true
         }
     ).select("-password")
+
+    // delete old avatar (non-blocking) ---> If we use await, then the call will be blocking
+    // Even if delete fails, still the Update Avatar request mut not fail----> that is why non-blocking is better
+    
+    if (oldAvatarUrl) {
+        deleteFromCloudinaryByUrl(oldAvatarUrl)  // this is an async fn so it returns a Promise
+        .then(() => console.log("Old avatar deleted"))
+        .catch((e) => console.log("Old avatar delete failed:", e.message));
+    }   
 
     return res.status(200).json(
         new ApiResponse(200, user, "avatar updated successfully")
